@@ -24,8 +24,9 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, f1_score
 from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
 
-DATA_PATH = Path("assignments/data/spam.csv")
+DATA_PATH = Path("../data/spam.csv")
 
 STOP_WORDS: frozenset[str] = frozenset(
     "a an the is are was were be been being have has had do does did "
@@ -68,15 +69,21 @@ def preprocess(text: str, remove_stopwords: bool = True) -> list[str]:
     5. Filter single-character tokens.
     """
     # TODO: lowercase text
+    text = text.lower()
 
     # TODO: remove punctuation and digits
-    
+    text = re.sub(r"[^a-z\s]", " ", text)
+
     # TODO: split into tokens
-    tokens: list[str] = []
+    tokens: list[str] = text.split()
 
     # TODO: if remove_stopwords is True, remove tokens from STOP_WORDS
-    
+    if remove_stopwords:
+        tokens = [t for t in tokens if t not in STOP_WORDS]
+
     # TODO: remove single-character tokens
+    tokens = [t for t in tokens if len(t) > 1]
+
     return tokens
 
 
@@ -94,8 +101,15 @@ def build_vocabulary(corpus: list[str], max_vocab: int = 3000) -> dict[str, int]
     4. Return {token: index} ordered by descending frequency.
     """
     # TODO: create a vocabulary
-    
-    return {}
+    counter: Counter = Counter()
+    for doc in corpus:
+        tokens = preprocess(doc)
+        counter.update(tokens)
+
+    most_common = counter.most_common(max_vocab)
+    vocab = {token: idx for idx, (token, _) in enumerate(most_common)}
+
+    return vocab
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +129,11 @@ def count_vectorize(texts: list[str], vocab: dict[str, int]) -> np.ndarray:
     # TODO: for each document:
     # - preprocess document
     # - increment matrix[i, vocab[token]] for each token found in vocab
+    for i, doc in enumerate(texts):
+        tokens = preprocess(doc)
+        for token in tokens:
+            if token in vocab:
+                matrix[i, vocab[token]] += 1
 
     return matrix
 
@@ -136,10 +155,15 @@ def compute_idf(corpus_tokens: list[list[str]], vocab: dict[str, int]) -> np.nda
 
     # TODO: compute document frequency per token
     # Hint: use set(tokens) so each token counts once per document
+    for tokens in corpus_tokens:
+        unique_tokens = set(tokens)
+        for token in unique_tokens:
+            if token in vocab:
+                df[vocab[token]] += 1
 
     # TODO: compute and return smoothed IDF vector
-    
-    pass
+    idf = np.log((1 + n_docs) / (1 + df)) + 1
+    return idf
 
 
 def tfidf_vectorize(
@@ -161,7 +185,18 @@ def tfidf_vectorize(
     vocab_size = len(vocab)
     matrix = np.zeros((n_docs, vocab_size), dtype=np.float64)
 
-    pass
+    for i, doc in enumerate(texts):
+        tokens = preprocess(doc)
+        if not tokens:
+            continue
+        token_counts = Counter(tokens)
+        doc_len = len(tokens)
+        for token, count in token_counts.items():
+            if token in vocab:
+                tf = count / doc_len
+                matrix[i, vocab[token]] = tf * idf[vocab[token]]
+
+    return matrix
 
 
 # ---------------------------------------------------------------------------
@@ -192,8 +227,33 @@ def extract_custom_features(text: str) -> list[float]:
     """
     # TODO: compute all 9 features and return as list[float]
     # Tip: protect against division by zero for empty text/tokens.
-    
-    pass
+    tokens_raw = text.split()
+    num_tokens = len(tokens_raw)
+    num_chars = len(text)
+
+    num_digits = sum(c.isdigit() for c in text)
+    num_upper = sum(c.isupper() for c in text)
+    upper_ratio = num_upper / num_chars if num_chars > 0 else 0.0
+    num_punct = sum(c in "!?." for c in text)
+    num_currency = sum(c in "$\xa3\u20ac" for c in text) + text.lower().count("gbp") + text.lower().count("eur")
+
+    text_lower = text.lower()
+    spam_word_count = sum(1 for w in text_lower.split() if w in _SPAM_WORDS)
+
+    unique_tokens = set(t.lower() for t in tokens_raw)
+    ttr = len(unique_tokens) / num_tokens if num_tokens > 0 else 0.0
+
+    return [
+        float(num_chars),
+        float(num_tokens),
+        float(num_digits),
+        float(num_upper),
+        upper_ratio,
+        float(num_punct),
+        float(num_currency),
+        float(spam_word_count),
+        ttr,
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -209,10 +269,20 @@ def evaluate(
 ) -> None:
     """Train logistic regression and print a classification report."""
     # TODO: train LogisticRegression(max_iter=1000, random_state=42)
+    clf = LogisticRegression(max_iter=1000, random_state=42)
+    clf.fit(X_train, y_train)
+
     # TODO: predict on X_test
+    y_pred = clf.predict(X_test)
+
     # TODO: compute macro F1
+    macro_f1 = f1_score(y_test, y_pred, average="macro")
+
     # TODO: print section header and classification_report
-    
+    print(f"\n{'='*60}")
+    print(f"  {label}  |  Macro F1: {macro_f1:.4f}")
+    print('='*60)
+    print(classification_report(y_test, y_pred, target_names=["ham", "spam"]))
 
 
 # ---------------------------------------------------------------------------
@@ -232,26 +302,57 @@ def main() -> None:
     )
 
     # TODO: build vocabulary from X_train_raw only (avoid leakage)
-    vocab: dict[str, int] = {}
+    vocab: dict[str, int] = build_vocabulary(X_train_raw, max_vocab=3000)
 
     # --- Bag-of-Words ---
     # TODO: vectorize train/test with count_vectorize and evaluate
+    X_train_bow = count_vectorize(X_train_raw, vocab)
+    X_test_bow  = count_vectorize(X_test_raw,  vocab)
+    evaluate(X_train_bow, X_test_bow, y_train, y_test, "Bag-of-Words (Count Vectorizer)")
 
     # --- TF-IDF ---
     # TODO: preprocess X_train_raw -> tokens
+    train_tokens = [preprocess(doc) for doc in X_train_raw]
+
     # TODO: compute idf on training tokens only
+    idf = compute_idf(train_tokens, vocab)
+
     # TODO: vectorize train/test with tfidf_vectorize and evaluate
+    X_train_tfidf = tfidf_vectorize(X_train_raw, vocab, idf)
+    X_test_tfidf  = tfidf_vectorize(X_test_raw,  vocab, idf)
+    evaluate(X_train_tfidf, X_test_tfidf, y_train, y_test, "TF-IDF (from scratch)")
 
     # --- Custom features ---
     # TODO: build numpy feature matrices from extract_custom_features
+    X_train_custom = np.array([extract_custom_features(t) for t in X_train_raw])
+    X_test_custom  = np.array([extract_custom_features(t) for t in X_test_raw])
+
     # TODO: evaluate custom features
+    evaluate(X_train_custom, X_test_custom, y_train, y_test, "Hand-crafted Features (9 features)")
 
     # --- Custom approach (optional) ---
-    # TODO: add your own representation idea and evaluate it 
+    # TODO: add your own representation idea and evaluate it
     # (e.g., use scikit-learn tf-idf implementation and try to find the best hyperparameter values)
     # (run script using machine learning models)
+    for ngram_range, min_df, sublinear_tf in [
+        ((1, 1), 2, False),
+        ((1, 2), 2, True),
+        ((1, 3), 2, True),
+    ]:
+        vec = TfidfVectorizer(
+            ngram_range=ngram_range,
+            min_df=min_df,
+            sublinear_tf=sublinear_tf,
+            stop_words=list(STOP_WORDS),
+            max_features=5000,
+        )
+        X_tr = vec.fit_transform(X_train_raw)
+        X_te = vec.transform(X_test_raw)
+        evaluate(
+            X_tr, X_te, y_train, y_test,
+            f"sklearn TF-IDF ngram={ngram_range} sublinear={sublinear_tf}"
+        )
 
 
 if __name__ == "__main__":
     main()
-

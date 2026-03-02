@@ -1,0 +1,85 @@
+C:\Users\tjasa\miniconda3\envs\nlp\python.exe C:\Users\tjasa\Desktop\NLP\NLP-Course-Tutorials\assignments\classification\text_representation.py
+Loading dataset...
+  Total samples : 5572
+  Spam          : 747  (13.4%)
+  Ham           : 4825
+
+============================================================
+  Bag-of-Words (Count Vectorizer)  |  Macro F1: 0.9406
+============================================================
+              precision    recall  f1-score   support
+
+         ham       0.97      1.00      0.99      2413
+        spam       0.99      0.82      0.90       373
+
+    accuracy                           0.97      2786
+   macro avg       0.98      0.91      0.94      2786
+weighted avg       0.97      0.97      0.97      2786
+
+
+============================================================
+  TF-IDF (from scratch)  |  Macro F1: 0.9186
+============================================================
+              precision    recall  f1-score   support
+
+         ham       0.97      1.00      0.98      2413
+        spam       0.97      0.77      0.86       373
+
+    accuracy                           0.97      2786
+   macro avg       0.97      0.88      0.92      2786
+weighted avg       0.97      0.97      0.96      2786
+
+
+============================================================
+  Hand-crafted Features (9 features)  |  Macro F1: 0.9531
+============================================================
+              precision    recall  f1-score   support
+
+         ham       0.98      1.00      0.99      2413
+        spam       0.97      0.87      0.92       373
+
+    accuracy                           0.98      2786
+   macro avg       0.98      0.93      0.95      2786
+weighted avg       0.98      0.98      0.98      2786
+
+
+============================================================
+  sklearn TF-IDF ngram=(1, 1) sublinear=False  |  Macro F1: 0.8981
+============================================================
+              precision    recall  f1-score   support
+
+         ham       0.96      1.00      0.98      2413
+        spam       0.99      0.70      0.82       373
+
+    accuracy                           0.96      2786
+   macro avg       0.97      0.85      0.90      2786
+weighted avg       0.96      0.96      0.96      2786
+
+
+============================================================
+  sklearn TF-IDF ngram=(1, 2) sublinear=True  |  Macro F1: 0.8940
+============================================================
+              precision    recall  f1-score   support
+
+         ham       0.95      1.00      0.98      2413
+        spam       0.99      0.69      0.81       373
+
+    accuracy                           0.96      2786
+   macro avg       0.97      0.84      0.89      2786
+weighted avg       0.96      0.96      0.95      2786
+
+
+============================================================
+  sklearn TF-IDF ngram=(1, 3) sublinear=True  |  Macro F1: 0.8973
+============================================================
+              precision    recall  f1-score   support
+
+         ham       0.96      1.00      0.98      2413
+        spam       0.98      0.70      0.82       373
+
+    accuracy                           0.96      2786
+   macro avg       0.97      0.85      0.90      2786
+weighted avg       0.96      0.96      0.96      2786
+
+
+Process finished with exit code 0
