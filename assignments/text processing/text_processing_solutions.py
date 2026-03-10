@@ -205,8 +205,8 @@ def run() -> None:
             }
         )
 
-    report_path = Path("assignments/text_processing_alternative_report.md")
-    plot_path = Path("assignments/token_count_comparison.png")
+    report_path = Path("./text_processing_report.md")
+    plot_path = Path("./token_count_comparison.png")
 
     write_report(report_rows, report_path)
     visualize_token_counts(report_rows, plot_path)

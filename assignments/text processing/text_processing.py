@@ -279,8 +279,8 @@ def run() -> None:
             "stanza_entities": str(stanza_res.entities),
         })
 
-    report_path = Path("assignments/text_processing_alternative_report.md")
-    plot_path = Path("assignments/token_count_comparison.png")
+    report_path = Path("./text_processing_report.md")
+    plot_path = Path("./token_count_comparison.png")
 
     # TODO: Call write_report and visualize_token_counts using report_rows.
     write_report(report_rows, report_path)

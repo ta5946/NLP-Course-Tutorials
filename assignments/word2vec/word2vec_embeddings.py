@@ -51,8 +51,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, f1_score
 from sklearn.model_selection import train_test_split
 
-DATA_PATH = Path("assignments/data/spam.csv")
-VIZ_PATH  = Path("assignments/word2vec/embedding_space.png")
+DATA_PATH = Path("../data/spam.csv")
+VIZ_PATH  = Path("./embedding_space.png")
 
 # ---------------------------------------------------------------------------
 # Helpers  (already implemented — do not modify)
@@ -92,7 +92,7 @@ def load_embeddings(model_name: str = "glove-wiki-gigaword-100") -> KeyedVectors
     KeyedVectors
     """
     # TODO: call api.load(model_name) and return the result
-    pass
+    return api.load(model_name)
 
 
 # ===========================================================================
@@ -120,7 +120,11 @@ def cosine_similarity(u: np.ndarray, v: np.ndarray) -> float:
     float in [-1, 1]
     """
     # TODO: compute and return cosine similarity
-    pass
+    norm_u = np.linalg.norm(u)
+    norm_v = np.linalg.norm(v)
+    if norm_u == 0.0 or norm_v == 0.0:
+        return 0.0
+    return float(np.dot(u, v) / (norm_u * norm_v))
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +160,15 @@ def most_similar_words(
         raise KeyError(f"'{word}' not in vocabulary")
 
     # TODO: iterate kv.index_to_key, compute similarities, filter, sort
-    pass
+    query_vec = kv[word]
+    similarities = []
+    for vocab_word in kv.index_to_key:
+        if vocab_word == word:
+            continue
+        sim = cosine_similarity(query_vec, kv[vocab_word])
+        similarities.append((vocab_word, sim))
+    similarities.sort(key=lambda x: x[1], reverse=True)
+    return similarities[:top_n]
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +198,10 @@ def average_query(words: list[str], kv: KeyedVectors) -> np.ndarray:
     np.ndarray  shape (kv.vector_size,)
     """
     # TODO: collect vectors for in-vocabulary words and return their mean
-    pass
+    vectors = [kv[w] for w in words if w in kv]
+    if not vectors:
+        return np.zeros(kv.vector_size)
+    return np.mean(vectors, axis=0)
 
 
 def most_similar_to_vector(
@@ -214,7 +229,14 @@ def most_similar_to_vector(
     """
     exclude = exclude or set()
     # TODO: iterate vocabulary, compute similarities, skip excluded words, sort
-    pass
+    similarities = []
+    for vocab_word in kv.index_to_key:
+        if vocab_word in exclude:
+            continue
+        sim = cosine_similarity(query_vec, kv[vocab_word])
+        similarities.append((vocab_word, sim))
+    similarities.sort(key=lambda x: x[1], reverse=True)
+    return similarities[:top_n]
 
 
 # ---------------------------------------------------------------------------
@@ -265,10 +287,12 @@ def solve_analogy(
             raise KeyError(f"'{w}' not in vocabulary")
 
     # TODO: compute query vector  →  kv[word_b] - kv[word_a] + kv[word_c]
-    query_vector: np.ndarray | None = None
+    query_vector: np.ndarray = kv[word_b] - kv[word_a] + kv[word_c]
 
     # TODO: find top_n nearest words to query_vector (excluding the three inputs)
-    pass
+    return most_similar_to_vector(
+        query_vector, kv, exclude={word_a, word_b, word_c}, top_n=top_n
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +346,22 @@ def evaluate_analogies(
     #   - collect into details list
     # TODO: compute accuracy = correct_count / len(benchmark)
     # TODO: return (accuracy, details)
-    pass
+    details = []
+    correct_count = 0
+    for word_a, word_b, word_c, expected in benchmark:
+        results = solve_analogy(word_a, word_b, word_c, kv, top_n=1)
+        predicted = results[0][0] if results else ""
+        is_correct = predicted == expected
+        if is_correct:
+            correct_count += 1
+        details.append({
+            "analogy": f"{word_a}:{word_b}::{word_c}:?",
+            "expected": expected,
+            "predicted": predicted,
+            "correct": is_correct,
+        })
+    accuracy = correct_count / len(benchmark) if benchmark else 0.0
+    return accuracy, details
 
 
 # ===========================================================================
@@ -391,7 +430,9 @@ def reduce_with_pca(
     np.ndarray  shape (n, n_components)
     """
     # TODO: apply PCA and return reduced matrix
-    pass
+    from sklearn.decomposition import PCA
+    pca = PCA(n_components=n_components)
+    return pca.fit_transform(matrix)
 
 
 def reduce_with_tsne(
@@ -423,7 +464,13 @@ def reduce_with_tsne(
     np.ndarray  shape (n, n_components)
     """
     # TODO: optionally reduce dims with PCA, then apply TSNE, return result
-    pass
+    from sklearn.decomposition import PCA
+    from sklearn.manifold import TSNE
+    if matrix.shape[1] > 50:
+        matrix = PCA(n_components=50).fit_transform(matrix)
+    tsne = TSNE(n_components=n_components, perplexity=perplexity,
+                random_state=random_state)
+    return tsne.fit_transform(matrix)
 
 
 def plot_embeddings(
@@ -453,7 +500,35 @@ def plot_embeddings(
     output_path  : Path
     """
     # TODO: build the scatter plot and save to output_path
-    pass
+    import matplotlib.pyplot as plt
+    unique_groups = list(dict.fromkeys(group_labels))  # preserve order, deduplicate
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    group_to_color = {g: color_cycle[i % len(color_cycle)]
+                      for i, g in enumerate(unique_groups)}
+
+    fig, ax = plt.subplots(figsize=(12, 9))
+    # Plot each group separately so legend entries are clean
+    for group in unique_groups:
+        indices = [i for i, g in enumerate(group_labels) if g == group]
+        ax.scatter(
+            coords[indices, 0], coords[indices, 1],
+            c=group_to_color[group], label=group, s=60, alpha=0.85,
+        )
+    # Annotate every point with its word
+    for i, word in enumerate(words):
+        ax.annotate(
+            word, (coords[i, 0], coords[i, 1]),
+            fontsize=8, ha="left", va="bottom",
+            textcoords="offset points", xytext=(4, 4),
+        )
+    ax.legend(title="Group", loc="best", fontsize=9)
+    ax.set_title(title, fontsize=13)
+    ax.set_xlabel("Component 1")
+    ax.set_ylabel("Component 2")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
 
 
 # ===========================================================================
@@ -485,7 +560,11 @@ def embed_document(text: str, kv: KeyedVectors) -> np.ndarray:
     np.ndarray  shape (kv.vector_size,)
     """
     # TODO: collect in-vocab vectors, return mean (or zeros if none found)
-    pass
+    tokens = simple_tokenize(text)
+    vectors = [kv[t] for t in tokens if t in kv]
+    if not vectors:
+        return np.zeros(kv.vector_size)
+    return np.mean(vectors, axis=0)
 
 
 # ---------------------------------------------------------------------------
@@ -503,7 +582,13 @@ def evaluate_embeddings(
     # TODO: fit LogisticRegression(max_iter=1000, random_state=42)
     # TODO: predict on X_test
     # TODO: compute macro F1 and print section header + classification_report
-    pass
+    clf = LogisticRegression(max_iter=1000, random_state=42)
+    clf.fit(X_train, y_train)
+    y_pred = clf.predict(X_test)
+    macro_f1 = f1_score(y_test, y_pred, average="macro")
+    print(f"\n--- {label} ---")
+    print(f"Macro F1: {macro_f1:.4f}")
+    print(classification_report(y_test, y_pred, target_names=["ham", "spam"]))
 
 
 # ===========================================================================
@@ -568,7 +653,19 @@ def compute_gender_bias_score(
 
     # TODO: compute mean cosine similarity to each gender pole
     # TODO: return male_sim - female_sim
-    pass
+    word_vec = kv[word]
+
+    male_sims = [cosine_similarity(word_vec, kv[w])
+                 for w in male_words if w in kv]
+    female_sims = [cosine_similarity(word_vec, kv[w])
+                   for w in female_words if w in kv]
+
+    if not male_sims or not female_sims:
+        return 0.0
+
+    male_sim = float(np.mean(male_sims))
+    female_sim = float(np.mean(female_sims))
+    return male_sim - female_sim
 
 
 def report_profession_bias(
@@ -594,7 +691,12 @@ def report_profession_bias(
     """
     # TODO: call compute_gender_bias_score for each profession
     # TODO: sort by score descending and return
-    pass
+    scores = [
+        (profession, compute_gender_bias_score(profession, kv, male_words, female_words))
+        for profession in professions
+    ]
+    scores.sort(key=lambda x: x[1], reverse=True)
+    return scores
 
 
 # ===========================================================================
