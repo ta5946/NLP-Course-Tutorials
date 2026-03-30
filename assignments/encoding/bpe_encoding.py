@@ -27,9 +27,14 @@ def build_initial_vocab(corpus: list[str]) -> dict[WordSymbols, int]:
     - vocabulary stores word-symbol tuples with frequencies
     """
     # TODO: split each sentence into words and count frequencies
+    word_freq: dict[str, int] = defaultdict(int)
+    for sentence in corpus:
+        for word in sentence.split():
+            word_freq[word] += 1
+
     # TODO: convert each unique word into tuple(characters + '</w>')
     # TODO: return {word_symbols: frequency}
-    return {}
+    return {tuple(list(word) + ["</w>"]): freq for word, freq in word_freq.items()}
 
 
 def get_pair_counts(vocab: dict[WordSymbols, int]) -> dict[Pair, int]:
@@ -39,7 +44,11 @@ def get_pair_counts(vocab: dict[WordSymbols, int]) -> dict[Pair, int]:
     # TODO: for each tokenized word and its freq:
     # - iterate over adjacent symbol pairs
     # - accumulate pair counts weighted by word frequency
-    return {}
+    pair_counts: dict[Pair, int] = defaultdict(int)
+    for symbols, freq in vocab.items():
+        for i in range(len(symbols) - 1):
+            pair_counts[(symbols[i], symbols[i + 1])] += freq
+    return pair_counts
 
 
 def merge_pair(pair: Pair, vocab: dict[WordSymbols, int]) -> dict[WordSymbols, int]:
@@ -49,7 +58,20 @@ def merge_pair(pair: Pair, vocab: dict[WordSymbols, int]) -> dict[WordSymbols, i
     """
     # TODO: replace each exact adjacent occurrence of pair with merged token
     # Return a new vocabulary dictionary.
-    return {}
+    merged_token = pair[0] + pair[1]
+    new_vocab: dict[WordSymbols, int] = {}
+    for symbols, freq in vocab.items():
+        new_symbols: list[str] = []
+        i = 0
+        while i < len(symbols):
+            if i < len(symbols) - 1 and symbols[i] == pair[0] and symbols[i + 1] == pair[1]:
+                new_symbols.append(merged_token)
+                i += 2
+            else:
+                new_symbols.append(symbols[i])
+                i += 1
+        new_vocab[tuple(new_symbols)] = freq
+    return new_vocab
 
 
 def train_bpe(
@@ -72,6 +94,13 @@ def train_bpe(
     # - pick most frequent pair
     # - merge it in vocab
     # - append chosen pair to merges
+    for _ in range(num_merges):
+        pair_counts = get_pair_counts(vocab)
+        if not pair_counts:
+            break
+        best_pair = max(pair_counts, key=lambda p: (pair_counts[p], p))
+        vocab = merge_pair(best_pair, vocab)
+        merges.append(best_pair)
 
     return merges, vocab
 
@@ -83,15 +112,27 @@ def encode_word(word: str, merges: list[Pair]) -> list[str]:
     Start from characters + '</w>', then apply merges in learned order.
     """
     # TODO: initialize symbols from word characters + end marker
-    symbols: list[str] = []
+    symbols: list[str] = list(word) + ["</w>"]
 
     # TODO: for each merge rule in order:
     # - scan symbols left-to-right
     # - merge matching adjacent symbols
     # - keep non-matching symbols unchanged
+    for pair in merges:
+        merged_token = pair[0] + pair[1]
+        new_symbols: list[str] = []
+        i = 0
+        while i < len(symbols):
+            if i < len(symbols) - 1 and symbols[i] == pair[0] and symbols[i + 1] == pair[1]:
+                new_symbols.append(merged_token)
+                i += 2
+            else:
+                new_symbols.append(symbols[i])
+                i += 1
+        symbols = new_symbols
 
     # optional: remove '</w>' from final output tokens if attached.
-    return symbols
+    return [token.replace("</w>", "") if token != "</w>" else token for token in symbols]
 
 
 def encode_text(text: str, merges: list[Pair]) -> list[str]:
@@ -99,7 +140,10 @@ def encode_text(text: str, merges: list[Pair]) -> list[str]:
     Encode a full text by concatenating encoded words.
     """
     # TODO: split text into words and encode each with encode_word
-    return []
+    tokens: list[str] = []
+    for word in text.split():
+        tokens.extend(encode_word(word, merges))
+    return tokens
 
 
 def main() -> None:
